@@ -1,0 +1,217 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>CPSC 314 Assignment 4 Sept 2019</title>
+    <style>
+      body { margin: 0; } canvas {width: 100%;
+      height: 100% }
+    </style>
+  </head>
+
+
+
+  <body>
+    <div id="canvas"></div>
+    <script src="js/three.min-r108.js"></script>
+    <script src="js/OBJLoader.js"></script>
+    <script src="js/SourceLoader.js"></script>
+    <script src="js/OrbitControls.js"></script>
+    <script src="js/KeyboardState.js"></script> <!-- By Jerome Etienne: http://jetienne.com/ -->
+
+<script id="myVertexShader" type="x-shader/x-vertex">
+precision highp float;
+
+////////// UNCOMMENT THE FOLLOWING WHEN USING WITH   https://shdr.bkcore.com/
+// attribute vec3 position;
+// attribute vec3 normal;
+// uniform mat3 normalMatrix;
+// uniform mat4 modelViewMatrix;
+// uniform mat4 projectionMatrix;
+
+varying vec3 varyingNormal;
+void main()
+{
+        varyingNormal = normal;
+	vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+	gl_Position = projectionMatrix * mvPosition;
+}
+</script>
+
+<script id="myFragmentShader" type="x-shader/x-fragment">
+
+  precision highp float;
+
+  //////////////////////////////////////////////////
+  // scaledImplicitABC()
+  // input:  
+  //   - two points, p1 and p2, that the line should pass through, having F(x,y)=0
+  //   - a third point, p3,  where we want F(x,y)=1
+  // output:  A,B,C,  corresponding to   F(x,y) = A*x + B*y + C   
+  //////////////////////////////////////////////////
+  
+  void scaledImplicitABC(vec2 p1, vec2 p2, vec2 p3, out float A, out float B, out float C) {
+  // Note:  the elements of a vec2 can be accessed using either .x, .y or [0], [1]
+  // e.g.:  A = p1.x + p2.y;
+  // e.g.:  A = p1[0] + p2[1];
+  // see  p5, p10 of the course notes, e.g., 
+  //     https://www.ugrad.cs.ubc.ca/~cs314/Vsep2019/S-scan-conversion-complete.pdf
+  
+  // Q1(d)  CODE GOES HERE
+   A = p2.y-p1.y;
+   B = p1.x-p2.x;
+   C = p1.y*p2.x-p1.x*p2.y;
+   float k = A*p3.x+B*p3.y+C;
+   A = A/k;
+   B = B/k;
+   C = C/k;
+  
+  }
+  
+  ///////////////////////////////////////////
+  //  getBarycentric():   input is triangle and (x,y) query point; 
+  //                      output is the barycentric coordinates
+  ///////////////////////////////////////////
+  
+  void getBarycentric(vec2 p1, vec2 p2, vec2 p3, float x, float y, 
+    out float alpha, out float beta, out float gamma) {
+    
+    float A12, B12, C12;    // implicit line parameters for edge 12
+    float A23, B23, C23;    // implicit line parameters for edge 23
+    float A13, B13, C13;    // implicit line parameters for edge 13
+  
+    scaledImplicitABC(p1,p2,p3,A12,B12,C12);
+    gamma = A12*x + B12*y + C12;
+    
+    scaledImplicitABC(p2,p3,p1, A23, B23, C23);
+    alpha = A23*x + B23*y + C23;
+    
+    scaledImplicitABC(p1,p3,p2, A13, B13, C13);
+    beta = A13*x + B13*y + C13;
+  }
+  
+  ///////////////////////////////////////////
+  //  insideSphere()
+  ///////////////////////////////////////////
+  
+  void insideSphere(float x, float y) {
+    float xc = 300.0;        // circle center
+    float yc = 500.0;
+    float rad = 150.0;       // radius
+    vec3 L = vec3(1,1,1);    // vector pointing in direction of light
+    vec3 N;                  // normal vector
+  
+    float dx = x - xc;
+    float dy = y - yc;
+    //  Q1(c)  CODE GOES HERE
+    float dz = sqrt(rad*rad-dx*dx-dy*dy);
+    N = vec3(dx,dy,dz);
+    N = normalize(N);
+    L= normalize(L);
+    
+    float i = max(dot(N,L),0.0);
+    if(i<=1.0,dx<=rad,dy<=rad,dz<=rad){
+    gl_FragColor = vec4(i,i,i,0.2);     // example fragment color assignment
+  }
+  }
+  
+  ///////////////////////////////////////////
+  //  insideSquare()
+  ///////////////////////////////////////////
+  
+  void insideSquare(float x, float y) {
+    float xmin = 600.0;
+    float ymin = 100.0;
+    float size = 100.0;
+  
+  // Q1(a)  CODE GOES HERE
+     float xmax = 700.0;
+     float ymax = 200.0;
+     if(x<= xmax && x>= xmin && y>= ymin && y<= ymax){
+     
+       gl_FragColor = vec4(1,1,1,0);     // example fragment color assignment
+     }
+  }
+  
+  ///////////////////////////////////////////
+  //  insideCircle()
+  ///////////////////////////////////////////
+  
+  void insideCircle(float x, float y) {
+      // circle specification
+    vec2 center = vec2(600,500);
+    float r1 = 100.0;
+    float r2 = 110.0;
+  
+  // Q1(b) CODE GOES HERE
+    float dx = x - center.x;
+    float dy = y - center.y;
+    
+    if(dx*dx+dy*dy >= r1*r1 && dx*dx+dy*dy <= r2*r2){
+      gl_FragColor = vec4(1,1,1,0);     // example fragment color assignment
+  }
+   
+  }
+  
+  ///////////////////////////////////////////
+  //  insideTriangle()
+  ///////////////////////////////////////////
+  
+  void insideTriangle(float x, float y) {
+    float alpha, beta, gamma;
+  
+      // three triangle vertices
+    vec2 P1 = vec2(300,100);
+    vec2 P2 = vec2(500,100);
+    vec2 P3 = vec2(400,300);
+  
+     // normals associated with the triangle vertices;  we will interpolate these
+    vec3 N1 = normalize(vec3(-1,-1,0.5));
+    vec3 N2 = normalize(vec3(1,-1,0.5));
+    vec3 N3 = normalize(vec3(0,1,0));
+  
+    getBarycentric(P1,P2,P3,x,y,alpha,beta,gamma);  // compute the barycentric coords for P(x,y)
+  
+    vec3 L = vec3(0,0,1);    // vector pointing in direction of light
+    vec3 N;                  // normal vector
+  
+  // Q1(e) CODE GOES HERE
+   N = alpha*N1+beta*N2+gamma*N3;
+   N = normalize(N);
+   L = normalize(L);
+   float i = dot(N,L);
+   
+   if (alpha>= 0.0 && alpha <= 1.0 && beta>= 0.0 && beta<= 1.0 && gamma>= 0.0  && gamma<= 1.0 ){
+      gl_FragColor = vec4(i,i,i,0);     // example fragment color assignment
+  //    gl_FragColor = vec4(alpha,alpha,alpha,0);
+  //    gl_FragColor = vec4(alpha,beta,gamma,0);
+  //    gl_FragColor = vec4(beta,beta,gamma,0);
+  }
+  }
+  
+  ///////////////////////////////////////////
+  //  main()
+  ///////////////////////////////////////////
+  
+  void main( void ) {
+  
+    gl_FragColor = vec4(0.6,0.6,0.6,0);     // default colour
+    float x = gl_FragCoord.x;    // pixel x coordinate in DCS
+    float y = gl_FragCoord.y;    // pixel y coordinate in DCS
+  
+    insideSquare(x,y);
+    insideCircle(x,y);
+    insideSphere(x,y);
+    insideTriangle(x,y);
+  }
+  
+  
+
+
+</script>
+
+
+<script src="a4.js"></script>
+
+</body>
+</html>
+
